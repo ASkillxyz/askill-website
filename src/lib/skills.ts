@@ -2,6 +2,7 @@
  * lib/skills.ts — Phase 2: Supabase 数据访问层
  *
  * 优先从 Supabase 读取；若环境变量未配置则降级到 Mock 数据（本地开发友好）。
+ * schema 对应：skills 表（无 author_id / ai_* 字段，用 author_username 做标识）
  */
 
 import type { Skill, SkillsQueryParams, PaginatedResponse, Category } from '@/types'
@@ -17,18 +18,20 @@ function isSupabaseConfigured(): boolean {
 }
 
 // ─── 从 Supabase 行数据映射到 Skill 类型 ─────────────────────────────────────
+// 完全基于你的 schema：无 author_id、无 ai_* 字段
 function rowToSkill(row: any): Skill {
+  const username = row.author_username ?? 'unknown'
   return {
     id:           row.id,
     slug:         row.slug,
     name:         row.name,
-    description:  row.description,
+    description:  row.description ?? '',
     fullMarkdown: row.full_markdown ?? '',
-    authorId:     row.author_id ?? row.author_username,
+    authorId:     username,           // schema 无 author_id，用 username 代替
     author: {
-      id:        row.author_id ?? row.author_username,
-      username:  row.author_username,
-      avatarUrl: row.author_avatar_url ?? undefined,
+      id:        username,
+      username,
+      avatarUrl: undefined,           // schema 无头像字段
     },
     githubRepo:   row.github_repo ?? '',
     categories:   (row.categories ?? []) as Category[],
@@ -36,14 +39,8 @@ function rowToSkill(row: any): Skill {
     stars:        row.stars ?? 0,
     createdAt:    row.created_at?.slice(0, 10) ?? '',
     updatedAt:    row.updated_at?.slice(0, 10) ?? '',
-    aiScore: row.ai_overall != null ? {
-      safety:        row.ai_safety        ?? 0,
-      clarity:       row.ai_clarity       ?? 0,
-      usefulness:    row.ai_usefulness    ?? 0,
-      performance:   row.ai_performance   ?? 0,
-      documentation: row.ai_documentation ?? 0,
-      overall:       row.ai_overall       ?? 0,
-    } : undefined,
+    // schema 无 ai_* 字段，aiScore 始终 undefined
+    aiScore:      undefined,
   }
 }
 
@@ -51,7 +48,6 @@ function rowToSkill(row: any): Skill {
 async function getSkillsFromSupabase(
   params: SkillsQueryParams
 ): Promise<PaginatedResponse<Skill>> {
-  // 动态 import，避免在未安装 @supabase/supabase-js 时报错
   const { supabase } = await import('./supabase')
   const { q, category, sort = 'hot', page = 1, limit = 12 } = params
 
@@ -60,31 +56,26 @@ async function getSkillsFromSupabase(
     .select('*', { count: 'exact' })
     .eq('status', 'published')
 
-  // 全文搜索（简单 ilike）
   if (q?.trim()) {
     query = query.or(
       `name.ilike.%${q}%,description.ilike.%${q}%,author_username.ilike.%${q}%`
     )
   }
 
-  // 分类筛选（categories 是 text[] 列）
   if (category && category !== 'all') {
     query = query.contains('categories', [category])
   }
 
-  // 排序
   switch (sort) {
     case 'hot': query = query.order('install_count', { ascending: false }); break
     case 'new': query = query.order('created_at',    { ascending: false }); break
     case 'az':  query = query.order('name',          { ascending: true  }); break
   }
 
-  // 分页
   const from = (page - 1) * limit
   query = query.range(from, from + limit - 1)
 
   const { data, error, count } = await query
-
   if (error) throw new Error(`Supabase getSkills error: ${error.message}`)
 
   return {
@@ -126,7 +117,7 @@ async function getFeaturedSkillsFromSupabase(limit: number): Promise<Skill[]> {
   return (data ?? []).map(rowToSkill)
 }
 
-// ─── Mock 降级：技能列表 ──────────────────────────────────────────────────────
+// ─── Mock 降级 ────────────────────────────────────────────────────────────────
 function getSkillsFromMock(params: SkillsQueryParams): PaginatedResponse<Skill> {
   const { q, category, sort = 'hot', page = 1, limit = 12 } = params
   let results = [...MOCK_SKILLS]
@@ -162,35 +153,24 @@ export async function getSkills(
   params: SkillsQueryParams = {}
 ): Promise<PaginatedResponse<Skill>> {
   if (isSupabaseConfigured()) {
-    try {
-      return await getSkillsFromSupabase(params)
-    } catch (e) {
-      console.warn('[skills] Supabase 查询失败，降级 Mock:', e)
-    }
+    try { return await getSkillsFromSupabase(params) }
+    catch (e) { console.warn('[skills] Supabase 查询失败，降级 Mock:', e) }
   }
   return getSkillsFromMock(params)
 }
 
 export async function getSkillBySlug(slug: string): Promise<Skill | null> {
   if (isSupabaseConfigured()) {
-    try {
-      return await getSkillBySlugFromSupabase(slug)
-    } catch (e) {
-      console.warn('[skills] Supabase slug 查询失败，降级 Mock:', e)
-    }
+    try { return await getSkillBySlugFromSupabase(slug) }
+    catch (e) { console.warn('[skills] Supabase slug 查询失败，降级 Mock:', e) }
   }
   return MOCK_SKILLS.find((s) => s.slug === slug) ?? null
 }
 
 export async function getFeaturedSkills(limit = 6): Promise<Skill[]> {
   if (isSupabaseConfigured()) {
-    try {
-      return await getFeaturedSkillsFromSupabase(limit)
-    } catch (e) {
-      console.warn('[skills] Supabase featured 查询失败，降级 Mock:', e)
-    }
+    try { return await getFeaturedSkillsFromSupabase(limit) }
+    catch (e) { console.warn('[skills] Supabase featured 查询失败，降级 Mock:', e) }
   }
-  return [...MOCK_SKILLS]
-    .sort((a, b) => b.installCount - a.installCount)
-    .slice(0, limit)
+  return [...MOCK_SKILLS].sort((a, b) => b.installCount - a.installCount).slice(0, limit)
 }
