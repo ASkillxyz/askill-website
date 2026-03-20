@@ -1,18 +1,27 @@
 'use client'
 
 import { useState } from 'react'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { ALL_CATEGORIES } from '@/lib/data'
 import { slugify } from '@/lib/utils'
 import type { Category } from '@/types'
 
+type Status = 'idle' | 'submitting' | 'success' | 'error'
+
 export default function UploadPage() {
-  const [name, setName] = useState('')
-  const [slug, setSlug] = useState('')
-  const [desc, setDesc] = useState('')
-  const [repo, setRepo] = useState('')
-  const [full, setFull] = useState('')
+  const { data: session, status: authStatus } = useSession()
+  const router = useRouter()
+
+  const [name, setName]               = useState('')
+  const [slug, setSlug]               = useState('')
+  const [desc, setDesc]               = useState('')
+  const [repo, setRepo]               = useState('')
+  const [full, setFull]               = useState('')
   const [selectedCats, setSelectedCats] = useState<Category[]>([])
-  const [submitted, setSubmitted] = useState(false)
+  const [status, setStatus]           = useState<Status>('idle')
+  const [result, setResult]           = useState<{ slug: string; prUrl: string | null; message: string } | null>(null)
+  const [errorMsg, setErrorMsg]       = useState('')
 
   function handleNameChange(val: string) {
     setName(val)
@@ -20,189 +29,127 @@ export default function UploadPage() {
   }
 
   function toggleCat(cat: Category) {
-    setSelectedCats((prev) =>
-      prev.includes(cat) ? prev.filter((c) => c !== cat) : [...prev, cat]
+    setSelectedCats(prev =>
+      prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat]
     )
   }
 
-  function handleSubmit() {
-    if (!name || !desc || !repo) return
-    setSubmitted(true)
+  function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (file.size > 500_000) { setErrorMsg('文件不能超过 500KB'); return }
+    const reader = new FileReader()
+    reader.onload = (ev) => setFull(ev.target?.result as string ?? '')
+    reader.readAsText(file, 'utf-8')
   }
 
-  if (submitted) {
+  async function handleSubmit() {
+    if (!name || !desc || !full || selectedCats.length === 0) return
+    setStatus('submitting')
+    setErrorMsg('')
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description: desc, fullMarkdown: full, githubRepo: repo || undefined, categories: selectedCats }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setErrorMsg(data.error ?? '提交失败，请重试'); setStatus('error'); return }
+      setResult({ slug: data.slug, prUrl: data.prUrl, message: data.message })
+      setStatus('success')
+    } catch {
+      setErrorMsg('网络错误，请重试')
+      setStatus('error')
+    }
+  }
+
+  if (authStatus === 'unauthenticated') {
     return (
-      <div className="page-wrap py-16">
-        <div className="tech-panel tech-outline mx-auto max-w-2xl px-6 py-12 text-center sm:px-10">
-          <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full border border-emerald-300/20 bg-emerald-300/10 text-3xl text-accent">
-            ✓
-          </div>
-          <div className="section-mono-title mb-2">// Submission received</div>
-          <h2 className="text-3xl font-semibold tracking-[-0.05em] text-white">Skill submitted</h2>
-          <p className="mx-auto mt-4 max-w-lg text-sm leading-7 text-muted">
-            Your skill is now in the review queue and should appear in the registry within 24 hours.
-          </p>
-          <a href="/skills" className="btn-primary mt-8">
-            Browse registry
-          </a>
+      <div className="max-w-xl mx-auto px-6 py-20 text-center">
+        <div className="text-4xl mb-4">🔒</div>
+        <h2 className="text-xl font-medium mb-2">请先登录</h2>
+        <p className="text-sm text-gray-500 mb-6">上传技能需要登录账号</p>
+        <button onClick={() => router.push('/')} className="px-5 py-2 rounded-lg bg-green-500 text-[#0a0c0f] font-semibold text-sm hover:bg-green-400 transition-all">返回首页登录</button>
+      </div>
+    )
+  }
+
+  if (status === 'success' && result) {
+    return (
+      <div className="max-w-xl mx-auto px-6 py-20 text-center">
+        <div className="w-16 h-16 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center mx-auto mb-5">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <h2 className="text-xl font-medium text-green-400 mb-2">提交成功！</h2>
+        <p className="text-sm text-gray-500 mb-6">{result.message}</p>
+        <div className="bg-[#111318] border border-white/[0.07] rounded-lg p-4 text-left mb-6">
+          <div className="text-xs text-gray-500 font-mono mb-1">// INSTALL COMMAND（审核后生效）</div>
+          <code className="text-sm text-green-400 font-mono">claw add gh:{(session?.user as any)?.username}/{result.slug}</code>
+        </div>
+        <div className="flex gap-3 justify-center">
+          {result.prUrl && <a href={result.prUrl} target="_blank" rel="noopener noreferrer" className="px-5 py-2 rounded-lg border border-white/[0.12] text-sm text-gray-400 hover:text-[#f0f2f5] transition-all">查看 PR →</a>}
+          <button onClick={() => router.push('/skills')} className="px-5 py-2 rounded-lg bg-green-500 text-[#0a0c0f] font-semibold text-sm hover:bg-green-400 transition-all">浏览技能库</button>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="page-wrap py-8 sm:py-10">
-      <section className="tech-panel tech-grid tech-outline relative overflow-hidden px-6 py-8 sm:px-8 lg:px-10">
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-          <div>
-            <div className="section-mono-title mb-3">// Publish workflow</div>
-            <h1 className="text-4xl font-semibold tracking-[-0.05em] text-white sm:text-5xl">Upload a skill with stronger metadata.</h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-muted">
-              Package the name, repo, categories, and documentation so the registry can present it cleanly and install it fast.
-            </p>
-          </div>
+    <div className="max-w-xl mx-auto px-6 py-10">
+      <h1 className="text-2xl font-medium mb-1">Upload a Skill</h1>
+      <p className="text-sm text-gray-500 mb-8">提交后会自动创建 GitHub PR，审核通过即发布。</p>
 
-          <div className="tech-panel-soft tech-outline p-5">
-            <div className="section-mono-title mb-4">// Publishing notes</div>
-            <div className="space-y-3 text-sm leading-6 text-muted">
-              <p>Every submission is reviewed before it goes live.</p>
-              <p>Short descriptions should explain the outcome, not the implementation.</p>
-              <p>Good `SKILL.md` files include setup, examples, and failure cases.</p>
-            </div>
-          </div>
+      {status === 'error' && errorMsg && (
+        <div className="mb-5 px-4 py-3 rounded-lg bg-red-500/10 border border-red-500/20 text-sm text-red-400">{errorMsg}</div>
+      )}
+
+      <div className="mb-5">
+        <label className="block text-xs font-mono text-gray-500 mb-1.5">SKILL NAME *</label>
+        <input value={name} onChange={e => handleNameChange(e.target.value)} placeholder="e.g. Gmail Summarizer" className="w-full bg-[#111318] border border-white/[0.12] rounded-lg px-4 py-2.5 text-sm text-[#f0f2f5] placeholder-gray-600"/>
+        {slug && <p className="text-xs text-gray-500 mt-1.5 font-mono">slug: <span className="text-green-400">{slug}</span></p>}
+      </div>
+
+      <div className="mb-5">
+        <label className="block text-xs font-mono text-gray-500 mb-1.5">SHORT DESCRIPTION *</label>
+        <input value={desc} onChange={e => setDesc(e.target.value)} placeholder="一句话说明这个 skill 做什么" maxLength={200} className="w-full bg-[#111318] border border-white/[0.12] rounded-lg px-4 py-2.5 text-sm text-[#f0f2f5] placeholder-gray-600"/>
+        <p className="text-xs text-gray-600 mt-1">{desc.length}/200</p>
+      </div>
+
+      <div className="mb-5">
+        <label className="block text-xs font-mono text-gray-500 mb-1.5">GITHUB REPO <span className="text-gray-600">（可选）</span></label>
+        <input value={repo} onChange={e => setRepo(e.target.value)} placeholder="https://github.com/username/skill-name" className="w-full bg-[#111318] border border-white/[0.12] rounded-lg px-4 py-2.5 text-sm text-[#f0f2f5] placeholder-gray-600"/>
+        {slug && <p className="text-xs text-gray-600 mt-1 font-mono">安装命令：claw add gh:{(session?.user as any)?.username ?? 'you'}/{slug}</p>}
+      </div>
+
+      <div className="mb-5">
+        <label className="block text-xs font-mono text-gray-500 mb-2">CATEGORIES *</label>
+        <div className="flex flex-wrap gap-1.5">
+          {ALL_CATEGORIES.map(cat => (
+            <button key={cat} onClick={() => toggleCat(cat)} className={['px-3 py-1 rounded-full text-xs border transition-all', selectedCats.includes(cat) ? 'border-green-500/25 bg-green-500/10 text-green-400' : 'border-white/[0.07] text-gray-500 hover:border-white/[0.12] hover:text-[#f0f2f5]'].join(' ')}>{cat}</button>
+          ))}
         </div>
-      </section>
+      </div>
 
-      <section className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="tech-panel-soft tech-outline p-6 sm:p-8">
-          <div className="grid gap-5">
-            <div>
-              <label className="section-mono-title mb-2 block">Skill name</label>
-              <input
-                value={name}
-                onChange={(e) => handleNameChange(e.target.value)}
-                placeholder="e.g. Gmail Summarizer"
-                className="tech-input"
-              />
-              {slug && (
-                <p className="mt-2 font-['IBM_Plex_Mono'] text-xs uppercase tracking-[0.16em] text-muted-soft">
-                  slug: <span className="text-accent">{slug}</span>
-                </p>
-              )}
-            </div>
+      <div className="mb-5">
+        <label className="block text-xs font-mono text-gray-500 mb-1.5">SKILL.MD FILE *</label>
+        <label className="flex flex-col items-center justify-center border-2 border-dashed border-white/[0.12] rounded-xl p-8 text-center cursor-pointer hover:border-green-500/25 transition-all">
+          <div className="text-3xl mb-2">📄</div>
+          <p className="text-sm text-gray-500"><span className="text-green-400">点击上传</span> SKILL.md 文件</p>
+          <p className="text-xs text-gray-600 mt-1">Markdown · 最大 500KB</p>
+          <input type="file" accept=".md,.txt" className="hidden" onChange={handleFileUpload}/>
+        </label>
+        {full && <p className="text-xs text-green-400 mt-2 font-mono">✓ 已读取 {full.length} 字符</p>}
+      </div>
 
-            <div>
-              <label className="section-mono-title mb-2 block">Short description</label>
-              <input
-                value={desc}
-                onChange={(e) => setDesc(e.target.value)}
-                placeholder="One sentence about what this skill does"
-                maxLength={200}
-                className="tech-input"
-              />
-              <p className="mt-2 text-xs text-muted-soft">{desc.length}/200</p>
-            </div>
+      <div className="mb-8">
+        <label className="block text-xs font-mono text-gray-500 mb-1.5">或直接粘贴 SKILL.MD 内容</label>
+        <textarea value={full} onChange={e => setFull(e.target.value)} rows={8} placeholder={'## What this skill does\n\n详细描述...'} className="w-full bg-[#111318] border border-white/[0.12] rounded-lg px-4 py-3 text-sm text-[#f0f2f5] placeholder-gray-600 font-mono resize-y"/>
+      </div>
 
-            <div>
-              <label className="section-mono-title mb-2 block">GitHub repo URL</label>
-              <input
-                value={repo}
-                onChange={(e) => setRepo(e.target.value)}
-                placeholder="https://github.com/username/skill-name"
-                className="tech-input"
-              />
-              <p className="mt-2 text-xs text-muted-soft">
-                Install command:{' '}
-                {slug && repo ? (
-                  <span className="font-['IBM_Plex_Mono'] text-accent">
-                    claw add gh:{repo.replace('https://github.com/', '')}
-                  </span>
-                ) : (
-                  'auto-generated after repo is set'
-                )}
-              </p>
-            </div>
-
-            <div>
-              <label className="section-mono-title mb-3 block">Categories</label>
-              <div className="flex flex-wrap gap-2">
-                {ALL_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => toggleCat(cat)}
-                    className={[
-                      'tech-pill px-4 py-2 text-xs',
-                      selectedCats.includes(cat) ? 'tech-pill-active' : '',
-                    ].join(' ')}
-                  >
-                    {cat}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="section-mono-title mb-2 block">SKILL.md file</label>
-              <div
-                className="rounded-[24px] border border-dashed border-cyan-400/20 bg-cyan-400/[0.03] px-6 py-10 text-center transition-all hover:border-cyan-300/30 hover:bg-cyan-400/[0.05]"
-                onDragOver={(e) => e.preventDefault()}
-              >
-                <div className="mb-3 text-4xl">⌘</div>
-                <p className="text-sm text-muted">
-                  <span className="text-accent">Click to upload</span> or drag & drop your markdown file
-                </p>
-                <p className="mt-2 text-xs uppercase tracking-[0.18em] text-muted-soft">Markdown only · max 500KB</p>
-              </div>
-            </div>
-
-            <div>
-              <label className="section-mono-title mb-2 block">Full description</label>
-              <textarea
-                value={full}
-                onChange={(e) => setFull(e.target.value)}
-                rows={10}
-                placeholder={'## What this skill does\n\nDescribe the skill in detail, including features, requirements, and usage examples.'}
-                className="tech-textarea resize-y font-['IBM_Plex_Mono']"
-              />
-            </div>
-
-            <button
-              onClick={handleSubmit}
-              disabled={!name || !desc || !repo}
-              className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              Submit for Review
-            </button>
-            <p className="text-center text-xs text-muted-soft">Skills are reviewed within 24h · Sign in required to publish</p>
-          </div>
-        </div>
-
-        <div className="space-y-5">
-          <div className="tech-panel-soft tech-outline p-5">
-            <div className="section-mono-title mb-4">// Preview signal</div>
-            <div className="rounded-[22px] border border-white/10 bg-white/[0.03] p-4">
-              <div className="mb-2 text-lg font-semibold tracking-[-0.04em] text-white">{name || 'Untitled Skill'}</div>
-              <p className="text-sm leading-6 text-muted">{desc || 'Short description will appear here once written.'}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {(selectedCats.length ? selectedCats : ALL_CATEGORIES.slice(0, 2)).map((cat) => (
-                  <span key={cat} className="tech-pill px-3 py-1 text-[11px]">
-                    {cat}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <div className="tech-panel-soft tech-outline p-5">
-            <div className="section-mono-title mb-4">// Quality bar</div>
-            <div className="space-y-3 text-sm leading-6 text-muted">
-              <p>Use a descriptive repo URL and match the slug to the actual package identity.</p>
-              <p>Keep the short description outcome-focused and avoid generic marketing copy.</p>
-              <p>Include setup steps and at least one concrete example in the full markdown.</p>
-            </div>
-          </div>
-        </div>
-      </section>
+      <button onClick={handleSubmit} disabled={!name || !desc || !full || selectedCats.length === 0 || status === 'submitting'} className="w-full py-3 rounded-lg bg-green-500 text-[#0a0c0f] font-semibold text-sm hover:bg-green-400 transition-all disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+        {status === 'submitting' ? (<><svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.25"/><path fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>提交中…</>) : 'Submit for Review'}
+      </button>
+      <p className="text-xs text-gray-600 text-center mt-3">提交后自动创建 GitHub PR · 审核通过后发布</p>
     </div>
   )
 }
