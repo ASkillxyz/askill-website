@@ -1,6 +1,5 @@
 import Link from 'next/link'
-import { getFeaturedSkills } from '@/lib/skills'
-import { SITE_STATS } from '@/lib/data'
+import { getFeaturedSkills, getSiteStats } from '@/lib/skills'
 import { SkillsGrid } from '@/components/skills/SkillsGrid'
 import { StatCard } from '@/components/ui/StatCard'
 import { CopyButton } from '@/components/ui/CopyButton'
@@ -11,8 +10,17 @@ const SIGNALS = [
   { label: 'Skill review SLA', value: '< 24h' },
 ]
 
+function formatNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(1).replace('.0', '')}k`
+  return String(n)
+}
+
 export default async function HomePage() {
-  const featured = await getFeaturedSkills(6)
+  const [featured, stats] = await Promise.all([
+    getFeaturedSkills(6),
+    getSiteStats(),
+  ])
 
   return (
     <div className="page-wrap pb-8 pt-8 sm:pt-10">
@@ -89,11 +97,30 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* ── Stats 真实数据 ── */}
       <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard value={`${(SITE_STATS.totalSkills / 1000).toFixed(1)}k`} label="Published Skills" />
-        <StatCard value={String(SITE_STATS.contributors)} label="Contributors" accent />
-        <StatCard value="1.2M" label="Total Installs" />
-        <StatCard value={String(SITE_STATS.categories)} label="Categories" accent />
+        <StatCard
+          value={formatNumber(stats.totalSkills)}
+          label="Published Skills"
+          sub={`${stats.totalSkills.toLocaleString()} skills in registry`}
+        />
+        <StatCard
+          value={formatNumber(stats.contributors)}
+          label="Contributors"
+          sub={`${stats.contributors.toLocaleString()} unique authors`}
+          accent
+        />
+        <StatCard
+          value={formatNumber(stats.totalInstalls)}
+          label="Total Installs"
+          sub={`${stats.totalInstalls.toLocaleString()} installs recorded`}
+        />
+        <StatCard
+          value={String(stats.categories)}
+          label="Categories"
+          sub={`${stats.categories} skill categories`}
+          accent
+        />
       </section>
 
       <section className="mt-14">
