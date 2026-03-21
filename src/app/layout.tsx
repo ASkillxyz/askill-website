@@ -3,20 +3,43 @@ import '@/styles/globals.css'
 import { Providers } from '@/components/layout/Providers'
 import { Navbar } from '@/components/layout/Navbar'
 
+const SITE_URL = 'https://askill.xyz'
+const SITE_NAME = 'ASkill'
+const SITE_TITLE = 'ASkill — OpenClaw Skills Registry'
+const SITE_DESC = 'ASkill - OpenClaw skills, rendered like a live system map. Discover, install, and share community-built OpenClaw AI skills.'
+
 export const metadata: Metadata = {
-  title: 'OpenClaw Skills — Community Skill Registry',
-  description: 'Discover, install, and share community-built OpenClaw AI skills. Every OpenClaw Skill, One Registry.',
-  keywords: ['OpenClaw', 'AI skills', 'automation', 'CLI', 'community'],
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default:  SITE_TITLE,
+    template: `%s — ASkill`,
+  },
+  description: SITE_DESC,
+  keywords: ['ASkill', 'OpenClaw', 'AI skills', 'automation', 'CLI', 'community', 'skill registry', 'MCP'],
+  authors: [{ name: 'ASkill', url: SITE_URL }],
+  creator: 'ASkill',
   openGraph: {
-    title: 'OpenClaw Skills',
-    description: 'Every OpenClaw Skill, One Registry.',
-    type: 'website',
+    type:        'website',
+    locale:      'en_US',
+    url:         SITE_URL,
+    siteName:    SITE_NAME,
+    title:       SITE_TITLE,
+    description: SITE_DESC,
+  },
+  twitter: {
+    card:        'summary_large_image',
+    title:       SITE_TITLE,
+    description: SITE_DESC,
+  },
+  robots: {
+    index:  true,
+    follow: true,
   },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="zh-CN">
+    <html lang="en">
       <body className="tech-shell">
         <Providers>
           <Navbar />
@@ -32,7 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                     Source
                   </a>
                   <span>MIT</span>
-                  <span>Phase 1</span>
+                  <span>ASkill</span>
                 </div>
               </div>
             </div>

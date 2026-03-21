@@ -14,33 +14,43 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const skill = await getSkillBySlug(params.slug)
   if (!skill) return { title: 'Skill Not Found' }
   return {
-    title: `${skill.name} — OpenClaw Skills`,
-    description: skill.description,
+    title:       `${skill.name} — ASkill`,
+    description: skill.description || `Install ${skill.name} — an OpenClaw skill by ${skill.author.username}.`,
+    openGraph: {
+      title:       `${skill.name} — ASkill`,
+      description: skill.description,
+      type:        'article',
+    },
+    twitter: {
+      card:        'summary',
+      title:       `${skill.name} — ASkill`,
+      description: skill.description,
+    },
   }
 }
 
 const CARD_BG_MAP: Record<string, string> = {
-  'gmail-summarizer': '#1e3a2f',
+  'gmail-summarizer':   '#1e3a2f',
   'calendar-optimizer': '#1e2a3a',
   'github-pr-reviewer': '#2a1e3a',
-  'image-gen-prompt': '#3a2a1e',
-  'data-csv-analyst': '#1e3a1e',
-  'slack-digest': '#2a1e2a',
-  'sql-schema-gen': '#1e2a3a',
-  'security-auditor': '#1e3a2f',
-  'tweet-crafter': '#3a1e1e',
+  'image-gen-prompt':   '#3a2a1e',
+  'data-csv-analyst':   '#1e3a1e',
+  'slack-digest':       '#2a1e2a',
+  'sql-schema-gen':     '#1e2a3a',
+  'security-auditor':   '#1e3a2f',
+  'tweet-crafter':      '#3a1e1e',
 }
 
 const CARD_ICON_MAP: Record<string, string> = {
-  'gmail-summarizer': '📧',
+  'gmail-summarizer':   '📧',
   'calendar-optimizer': '📅',
   'github-pr-reviewer': '🔍',
-  'image-gen-prompt': '🎨',
-  'data-csv-analyst': '📊',
-  'slack-digest': '💬',
-  'sql-schema-gen': '🗄️',
-  'security-auditor': '🛡️',
-  'tweet-crafter': '✍️',
+  'image-gen-prompt':   '🎨',
+  'data-csv-analyst':   '📊',
+  'slack-digest':       '💬',
+  'sql-schema-gen':     '🗄️',
+  'security-auditor':   '🛡️',
+  'tweet-crafter':      '✍️',
 }
 
 export default async function SkillDetailPage({ params }: Props) {
@@ -49,7 +59,7 @@ export default async function SkillDetailPage({ params }: Props) {
 
   const related = (await getFeaturedSkills(4)).filter((s) => s.slug !== skill.slug).slice(0, 3)
   const installCmd = generateInstallCmd(skill.author.username, skill.slug)
-  const bg = CARD_BG_MAP[skill.slug] ?? '#1e2a3a'
+  const bg   = CARD_BG_MAP[skill.slug] ?? '#1e2a3a'
   const icon = CARD_ICON_MAP[skill.slug] ?? '⚡'
 
   return (
@@ -93,8 +103,8 @@ export default async function SkillDetailPage({ params }: Props) {
             <div className="grid gap-3 sm:grid-cols-3">
               {[
                 { val: formatNumber(skill.installCount), label: 'Total installs' },
-                { val: `★ ${skill.stars}`, label: 'Stars' },
-                { val: skill.updatedAt.slice(0, 7), label: 'Last updated' },
+                { val: `★ ${skill.stars}`,               label: 'Stars'          },
+                { val: skill.updatedAt.slice(0, 7),      label: 'Last updated'   },
               ].map(({ val, label }) => (
                 <div key={label} className="stat-card">
                   <div className="section-mono-title mb-3">{label}</div>
@@ -169,11 +179,7 @@ function SkillMarkdown({ content }: { content: string }) {
   for (const line of lines) {
     if (line.startsWith('```')) {
       if (inCode) {
-        elements.push(
-          <pre key={key++}>
-            <code>{codeLines.join('\n')}</code>
-          </pre>
-        )
+        elements.push(<pre key={key++}><code>{codeLines.join('\n')}</code></pre>)
         codeLines = []
         inCode = false
       } else {
@@ -181,21 +187,12 @@ function SkillMarkdown({ content }: { content: string }) {
       }
       continue
     }
+    if (inCode) { codeLines.push(line); continue }
 
-    if (inCode) {
-      codeLines.push(line)
-      continue
-    }
-
-    if (line.startsWith('## ')) {
-      elements.push(<h2 key={key++} className="mb-3 mt-7 text-xl">{line.slice(3)}</h2>)
-    } else if (line.startsWith('### ')) {
-      elements.push(<h3 key={key++} className="mb-2 mt-6 text-lg">{line.slice(4)}</h3>)
-    } else if (line.startsWith('- ')) {
-      elements.push(<li key={key++} className="ml-5 list-disc text-sm leading-7">{line.slice(2)}</li>)
-    } else if (line.trim()) {
-      elements.push(<p key={key++} className="mb-3 text-sm leading-7">{line}</p>)
-    }
+    if      (line.startsWith('## '))  elements.push(<h2 key={key++} className="mb-3 mt-7 text-xl">{line.slice(3)}</h2>)
+    else if (line.startsWith('### ')) elements.push(<h3 key={key++} className="mb-2 mt-6 text-lg">{line.slice(4)}</h3>)
+    else if (line.startsWith('- '))   elements.push(<li key={key++} className="ml-5 list-disc text-sm leading-7">{line.slice(2)}</li>)
+    else if (line.trim())             elements.push(<p  key={key++} className="mb-3 text-sm leading-7">{line}</p>)
   }
 
   return <div className="prose-ocs">{elements}</div>
