@@ -1,9 +1,18 @@
 /**
  * sync-clawhub.mjs
  *
- * 第二步：从数据库读取所有 skill 的 skillDir 部分，
- * 逐条请求 ClawhHub API，补充 install_count / stars 等数据
+ * 第二步：从数据库读取所有 skill slug，
+ * 逐条请求 ClawhHub API 补充 install_count / stars 等数据
  * 间隔 5 秒，避免触发 rate limit
+ *
+ * ClawhHub API 响应结构：
+ * {
+ *   skill: {
+ *     slug, displayName, summary,
+ *     stats: { downloads, installsAllTime, installsCurrent, stars, comments, versions }
+ *   },
+ *   owner: { handle, displayName, userId, image }
+ * }
  *
  * 用法：
  *   node scripts/sync-clawhub.mjs
@@ -12,8 +21,7 @@
  *   NEXT_PUBLIC_SUPABASE_URL   Supabase 项目 URL
  *   SUPABASE_SERVICE_ROLE_KEY  Service Role Key
  *   CLAWHUB_DELAY              每次请求间隔 ms（默认 5000）
- *   CLAWHUB_LIMIT              最多处理多少条（默认 9999，全量）
- *   CLAWHUB_DEBUG              设为 "true" 打印首条原始响应，确认字段名
+ *   CLAWHUB_LIMIT              最多处理多少条（默认 9999）
  *   CLAWHUB_ONLY_EMPTY         设为 "true" 只处理 install_count=0 的记录（增量模式）
  */
 
@@ -35,19 +43,17 @@ try {
   }
 } catch {}
 
-const SUPABASE_URL    = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SUPABASE_KEY    = process.env.SUPABASE_SERVICE_ROLE_KEY
-const CLAWHUB_DELAY   = parseInt(process.env.CLAWHUB_DELAY  ?? '5000')
-const CLAWHUB_LIMIT   = parseInt(process.env.CLAWHUB_LIMIT  ?? '9999')
-const CLAWHUB_DEBUG   = process.env.CLAWHUB_DEBUG  === 'true'
-const ONLY_EMPTY      = process.env.CLAWHUB_ONLY_EMPTY === 'true'
+const SUPABASE_URL  = process.env.NEXT_PUBLIC_SUPABASE_URL
+const SUPABASE_KEY  = process.env.SUPABASE_SERVICE_ROLE_KEY
+const CLAWHUB_DELAY = parseInt(process.env.CLAWHUB_DELAY ?? '5000')
+const CLAWHUB_LIMIT = parseInt(process.env.CLAWHUB_LIMIT ?? '9999')
+const ONLY_EMPTY    = process.env.CLAWHUB_ONLY_EMPTY === 'true'
 
 if (!SUPABASE_URL || !SUPABASE_KEY) { console.error('❌ 缺少 SUPABASE 配置'); process.exit(1) }
 
 const sleep = ms => new Promise(r => setTimeout(r, ms))
-let debugPrinted = false
 
-// ─── 从数据库读取所有 slug（分页，每次1000条）────────────────────────────────
+// ─── 从数据库读取 slug 列表 ────────────────────────────────────────────────────
 async function fetchAllSlugs() {
   const slugs = []
   let offset = 0
@@ -58,11 +64,7 @@ async function fetchAllSlugs() {
     if (ONLY_EMPTY) url += '&install_count=eq.0'
 
     const res = await fetch(url, {
-      headers: {
-        apikey:        SUPABASE_KEY,
-        Authorization: `Bearer ${SUPABASE_KEY}`,
-        Accept:        'application/json',
-      },
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
     })
     if (!res.ok) throw new Error(`Supabase fetch slugs: ${res.status}`)
     const rows = await res.json()
@@ -74,16 +76,16 @@ async function fetchAllSlugs() {
   return slugs
 }
 
-// ─── ClawhHub API ──────────────────────────────────────────────────────────────
-// slug 存库格式：{userDir}-{skillDir}
-// API 请求格式：只用 {skillDir}，即 slug 中最后一个 "-" 之前去掉 userDir 前缀
-// 由于 userDir 可能含 "-"，取策略：去掉第一段（第一个 "-" 之前的部分）
-// 例：slug = "00010110-openclaw-version-monitor" → skillDir = "openclaw-version-monitor"
+// ─── slug 转 skillDir ──────────────────────────────────────────────────────────
+// DB slug 格式：{userDir}-{skillDir}，例 "00010110-openclaw-version-monitor"
+// API 请求只用 skillDir，即去掉第一段（第一个 "-" 之前）
+// → "openclaw-version-monitor"
 function slugToSkillDir(slug) {
   const idx = slug.indexOf('-')
   return idx >= 0 ? slug.slice(idx + 1) : slug
 }
 
+// ─── ClawhHub API ──────────────────────────────────────────────────────────────
 async function fetchClawhHub(skillDir) {
   try {
     const res = await fetch(`https://clawhub.ai/api/v1/skills/${skillDir}`, {
@@ -91,63 +93,50 @@ async function fetchClawhHub(skillDir) {
       signal: AbortSignal.timeout(10000),
     })
     if (res.status === 429) {
-      // 触发 rate limit，等额外 30 秒
       console.warn('  ⚠  Rate limit (429)，等待 30s...')
       await sleep(30000)
       return null
     }
     if (!res.ok) return null
-
-    const raw = await res.json()
-
-    if (CLAWHUB_DEBUG && !debugPrinted && raw) {
-      debugPrinted = true
-      console.log('\n━━━ ClawhHub 原始响应（首条命中）━━━')
-      console.log(JSON.stringify(raw, null, 2))
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n')
-    }
-
-    return raw
+    return await res.json()
   } catch {
     return null
   }
 }
 
+// ─── 解析 ClawhHub 响应（基于真实 API 结构）──────────────────────────────────
 function normalizeClawhHub(raw) {
   if (!raw || typeof raw !== 'object') return null
 
-  const install_count =
-    raw.install_count ?? raw.installCount ?? raw.installs ??
-    raw.downloads     ?? raw.install      ?? null
+  const skill = raw.skill   // 主体在 raw.skill 下
+  const owner = raw.owner   // 作者在 raw.owner 下
 
-  const stars =
-    raw.stars     ?? raw.starCount  ?? raw.star_count ??
-    raw.favorites ?? raw.likes      ?? null
+  if (!skill) return null
 
-  let categories = raw.categories ?? raw.tags ?? raw.category ?? null
-  if (typeof categories === 'string')
-    categories = categories.split(',').map(s => s.trim()).filter(Boolean)
-  if (!Array.isArray(categories) || categories.length === 0)
-    categories = null
-
-  const author_username =
-    raw.author_username ?? raw.author?.username ??
-    (typeof raw.author === 'string' ? raw.author : null) ?? null
+  const stats = skill.stats ?? {}
 
   return {
-    clawhub_id:     raw.id   ?? raw._id   ?? null,
-    name:           raw.name ?? raw.title ?? null,
-    description:    raw.description ?? raw.summary ?? raw.desc ?? null,
-    install_count:  typeof install_count === 'number' ? install_count : null,
-    stars:          typeof stars         === 'number' ? stars         : null,
-    categories,
-    author_username,
+    // 标识
+    clawhub_id:      skill.slug ?? null,
+
+    // 内容
+    name:            skill.displayName ?? null,
+    description:     skill.summary     ?? null,
+
+    // 数据指标
+    // installsAllTime = 历史总安装数，更接近我们的 install_count 语义
+    install_count:   typeof stats.installsAllTime === 'number' ? stats.installsAllTime : null,
+    stars:           typeof stats.stars           === 'number' ? stats.stars           : null,
+    downloads:       typeof stats.downloads       === 'number' ? stats.downloads       : null,
+
+    // 作者：优先 handle（即 GitHub 用户名），fallback displayName
+    author_username: owner?.handle ?? owner?.displayName ?? null,
+    author_avatar:   owner?.image  ?? null,
   }
 }
 
-// ─── 更新单条记录 ──────────────────────────────────────────────────────────────
+// ─── 更新单条记录（只 PATCH 有值的字段）──────────────────────────────────────
 async function updateSkill(slug, ch) {
-  // 只更新 ClawhHub 有值的字段，不覆盖 GitHub 已有的内容
   const patch = { clawhub_synced_at: new Date().toISOString() }
 
   if (ch.clawhub_id     != null) patch.clawhub_id     = ch.clawhub_id
@@ -155,7 +144,6 @@ async function updateSkill(slug, ch) {
   if (ch.stars          != null) patch.stars          = ch.stars
   if (ch.name           != null) patch.name           = ch.name
   if (ch.description    != null) patch.description    = ch.description
-  if (ch.categories?.length > 0) patch.categories    = ch.categories
   if (ch.author_username != null) patch.author_username = ch.author_username
 
   const res = await fetch(
@@ -179,7 +167,7 @@ async function main() {
   const start = Date.now()
   console.log('='.repeat(60))
   console.log('  Step 2 — ClawhHub 数据补充')
-  console.log(`  DELAY=${CLAWHUB_DELAY}ms  LIMIT=${CLAWHUB_LIMIT}  ONLY_EMPTY=${ONLY_EMPTY}  DEBUG=${CLAWHUB_DEBUG}`)
+  console.log(`  DELAY=${CLAWHUB_DELAY}ms  LIMIT=${CLAWHUB_LIMIT}  ONLY_EMPTY=${ONLY_EMPTY}`)
   console.log('='.repeat(60))
 
   console.log('\n📋 从数据库读取 slug 列表...')
@@ -191,12 +179,12 @@ async function main() {
   const errors = []
 
   for (let i = 0; i < slugs.length; i++) {
-    const slug      = slugs[i]
-    const skillDir  = slugToSkillDir(slug)
-    const prefix    = `[${String(i + 1).padStart(4)}/${slugs.length}]`
-    const elapsed   = Math.round((Date.now() - start) / 1000)
-    const avgMs     = i > 0 ? (Date.now() - start) / i : CLAWHUB_DELAY
-    const etaSec    = Math.round(avgMs * (slugs.length - i - 1) / 1000)
+    const slug     = slugs[i]
+    const skillDir = slugToSkillDir(slug)
+    const prefix   = `[${String(i + 1).padStart(4)}/${slugs.length}]`
+    const elapsed  = Math.round((Date.now() - start) / 1000)
+    const avgMs    = i > 0 ? (Date.now() - start) / i : CLAWHUB_DELAY
+    const etaSec   = Math.round(avgMs * (slugs.length - i - 1) / 1000)
 
     try {
       const raw = await fetchClawhHub(skillDir)
@@ -206,9 +194,14 @@ async function main() {
         console.log(`${prefix} — miss  ${skillDir} | ${elapsed}s eta~${etaSec}s`)
       } else {
         const ch = normalizeClawhHub(raw)
-        await updateSkill(slug, ch)
-        hit++
-        console.log(`${prefix} ✓ hit   ${skillDir} ⭐${ch.stars ?? '-'} 📦${ch.install_count ?? '-'} | ${elapsed}s eta~${etaSec}s`)
+        if (!ch) {
+          miss++
+          console.log(`${prefix} — parse fail  ${skillDir}`)
+        } else {
+          await updateSkill(slug, ch)
+          hit++
+          console.log(`${prefix} ✓ hit   ${skillDir} ⭐${ch.stars ?? '-'} 📦${ch.install_count ?? '-'} | ${elapsed}s eta~${etaSec}s`)
+        }
       }
     } catch (err) {
       failed++
@@ -216,10 +209,7 @@ async function main() {
       console.error(`${prefix} ✗ err   ${skillDir} — ${err.message}`)
     }
 
-    // 每次请求后等待（最后一条不等）
-    if (i < slugs.length - 1) {
-      await sleep(CLAWHUB_DELAY)
-    }
+    if (i < slugs.length - 1) await sleep(CLAWHUB_DELAY)
   }
 
   const totalTime = Math.round((Date.now() - start) / 1000)
