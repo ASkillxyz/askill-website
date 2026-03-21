@@ -6,7 +6,10 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sync:github": "node scripts/sync-github.mjs",
+    "sync:clawhub": "node scripts/sync-clawhub.mjs",
+    "sync:all": "node scripts/sync-github.mjs && node scripts/sync-clawhub.mjs"
   },
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.1.2",
