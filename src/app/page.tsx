@@ -1,8 +1,13 @@
 import Link from 'next/link'
+import type { Metadata } from 'next'
 import { getFeaturedSkills, getSiteStats } from '@/lib/skills'
 import { SkillsGrid } from '@/components/skills/SkillsGrid'
 import { StatCard } from '@/components/ui/StatCard'
 import { CopyButton } from '@/components/ui/CopyButton'
+
+export const metadata: Metadata = {
+  alternates: { canonical: 'https://askill.xyz' },
+}
 
 const SIGNALS = [
   { label: 'Registry uptime', value: '99.98%' },
@@ -16,6 +21,19 @@ function formatNumber(n: number): string {
   return String(n)
 }
 
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'ASkill',
+  url: 'https://askill.xyz',
+  description: 'ASkill - OpenClaw skills registry. Discover, install, and share community-built OpenClaw AI skills.',
+  potentialAction: {
+    '@type': 'SearchAction',
+    target: 'https://askill.xyz/skills?q={search_term_string}',
+    'query-input': 'required name=search_term_string',
+  },
+}
+
 export default async function HomePage() {
   const [featured, stats] = await Promise.all([
     getFeaturedSkills(6),
@@ -24,6 +42,11 @@ export default async function HomePage() {
 
   return (
     <div className="page-wrap pb-8 pt-8 sm:pt-10">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       <section className="tech-panel tech-grid tech-outline relative overflow-hidden px-6 py-10 sm:px-8 sm:py-12 lg:px-12 lg:py-16">
         <div className="absolute inset-y-0 right-0 hidden w-[42%] bg-[radial-gradient(circle_at_center,rgba(70,196,255,0.18),transparent_68%)] lg:block" />
         <div className="relative grid gap-10 lg:grid-cols-[minmax(0,1.2fr)_360px] lg:items-end">
@@ -35,14 +58,13 @@ export default async function HomePage() {
 
             <p className="data-kicker mb-4">Find. Fork. Ship.</p>
             <h1 className="max-w-4xl text-5xl font-semibold leading-[0.96] tracking-[-0.05em] sm:text-6xl lg:text-7xl">
-              OpenClaw skills,
+              ASkill — OpenClaw skills,
               <br />
               rendered like a
               <span className="bg-[linear-gradient(135deg,#7df9c7_0%,#8cc6ff_55%,#f4c77d_100%)] bg-clip-text text-transparent"> live system map</span>.
             </h1>
             <p className="mt-6 max-w-2xl text-base leading-7 text-muted sm:text-lg">
-              Browse community-built automations with a sharper signal layer: install paths, trend velocity, author context,
-              and a cleaner interface that feels closer to developer tooling than a template gallery.
+              The community registry for OpenClaw AI skills. Browse, install, and publish automations with install paths, trend velocity, and author context — built for CLI-first developers.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row">
@@ -97,7 +119,6 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* ── Stats 真实数据 ── */}
       <section className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard
           value={formatNumber(stats.totalSkills)}

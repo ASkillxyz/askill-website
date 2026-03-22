@@ -16,7 +16,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const skill = await getSkillBySlug(params.slug)
   if (!skill) return { title: 'Skill Not Found' }
   return {
-    title:       `${skill.name} — ASkill`,
+    // title 只写 skill.name，layout template 会自动追加 " — ASkill"
+    title:       skill.name,
     description: skill.description || `Install ${skill.name} — an OpenClaw skill by ${skill.author.username}.`,
     openGraph: {
       title:       `${skill.name} — ASkill`,
