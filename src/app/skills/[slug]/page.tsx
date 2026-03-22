@@ -63,12 +63,11 @@ export default async function SkillDetailPage({ params }: Props) {
   const skill = await getSkillBySlug(params.slug)
   if (!skill) notFound()
 
-  const related = (await getFeaturedSkills(4)).filter((s) => s.slug !== skill.slug).slice(0, 3)
+  const related    = (await getFeaturedSkills(4)).filter((s) => s.slug !== skill.slug).slice(0, 3)
   const installCmd = generateInstallCmd(skill.author.username, skill.slug)
-  const bg   = CARD_BG_MAP[skill.slug] ?? '#1e2a3a'
-  const icon = CARD_ICON_MAP[skill.slug] ?? '⚡'
+  const bg         = CARD_BG_MAP[skill.slug] ?? '#1e2a3a'
+  const icon       = CARD_ICON_MAP[skill.slug] ?? '⚡'
 
-  // JSON-LD 结构化数据
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
@@ -84,18 +83,11 @@ export default async function SkillDetailPage({ params }: Props) {
     },
     datePublished: skill.createdAt,
     dateModified:  skill.updatedAt,
-    aggregateRating: skill.stars > 0 ? {
-      '@type': 'AggregateRating',
-      ratingValue: '5',
-      ratingCount: String(skill.stars),
-    } : undefined,
-    downloadUrl: skill.githubRepo || undefined,
     keywords: skill.categories.join(', '),
   }
 
   return (
     <div className="page-wrap py-8 sm:py-10">
-      {/* JSON-LD 结构化数据 */}
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
@@ -230,7 +222,7 @@ function SkillMarkdown({ content }: { content: string }) {
     else if (line.startsWith('### ')) elements.push(<h3 key={key++} className="mb-2 mt-6 text-lg">{line.slice(4)}</h3>)
     else if (line.startsWith('- '))   elements.push(<li key={key++} className="ml-5 list-disc text-sm leading-7">{line.slice(2)}</li>)
     else if (line.trim())             elements.push(<p  key={key++} className="mb-3 text-sm leading-7">{line}</p>)
-  </for>
+  }
 
   return <div className="prose-ocs">{elements}</div>
 }
