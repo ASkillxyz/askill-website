@@ -12,7 +12,7 @@
  *   GITHUB_TOKEN               GitHub PAT（repo read 权限）
  *   NEXT_PUBLIC_SUPABASE_URL   Supabase 项目 URL
  *   SUPABASE_SERVICE_ROLE_KEY  Service Role Key
- *   SYNC_LIMIT                 最多新增多少条（默认 9999）
+ *   SYNC_LIMIT                 最多新增多少条（不设则同步全部）
  *   SYNC_DELAY                 每条之间延迟 ms（默认 150）
  *   FORCE_ALL                  设为 "true" 忽略已有记录，强制全量重新同步
  */
@@ -38,7 +38,7 @@ try {
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-const SYNC_LIMIT   = parseInt(process.env.SYNC_LIMIT ?? '9999')
+const SYNC_LIMIT   = process.env.SYNC_LIMIT ? parseInt(process.env.SYNC_LIMIT) : Infinity
 const SYNC_DELAY   = parseInt(process.env.SYNC_DELAY ?? '150')
 const FORCE_ALL    = process.env.FORCE_ALL === 'true'
 
@@ -82,16 +82,13 @@ async function ghFetch(url) {
 }
 
 // ─── 用 Trees API 一次拉取完整目录结构 ────────────────────────────────────────
-// 返回格式：[ { userDir: 'username', skillDir: 'skill-name', mdUrl: 'https://...' }, ... ]
 async function fetchSkillTree() {
-  // 1. 获取 main 分支最新 commit 的 tree SHA
   const branch = await ghFetch(
     'https://api.github.com/repos/openclaw/skills/branches/main'
   )
   if (!branch) throw new Error('无法获取 main 分支信息')
   const treeSha = branch.commit.commit.tree.sha
 
-  // 2. 递归拉取完整 tree（一次请求，无分页限制）
   console.log('🌲 拉取完整目录树（Trees API）...')
   const tree = await ghFetch(
     `https://api.github.com/repos/openclaw/skills/git/trees/${treeSha}?recursive=1`
@@ -102,8 +99,6 @@ async function fetchSkillTree() {
     console.warn('⚠  目录树被截断（超过 100,000 个文件），部分内容可能缺失')
   }
 
-  // 3. 从 tree 中筛选出所有 skills/{userDir}/{skillDir}/SKILL.md 路径
-  //    路径格式：skills/username/skill-name/SKILL.md
   const skills = []
   const mdPattern = /^skills\/([^/]+)\/([^/]+)\/SKILL\.md$/i
 
@@ -114,7 +109,6 @@ async function fetchSkillTree() {
     skills.push({
       userDir:  match[1],
       skillDir: match[2],
-      // 直接从 blob URL 构建 raw 下载地址
       mdUrl: `https://raw.githubusercontent.com/openclaw/skills/main/${item.path}`,
     })
   }
@@ -159,16 +153,14 @@ async function main() {
   const start = Date.now()
   console.log('='.repeat(60))
   console.log('  Step 1 — GitHub 增量同步（只处理新增）')
-  console.log(`  LIMIT=${SYNC_LIMIT}  DELAY=${SYNC_DELAY}ms  FORCE_ALL=${FORCE_ALL}`)
+  console.log(`  LIMIT=${SYNC_LIMIT === Infinity ? '∞' : SYNC_LIMIT}  DELAY=${SYNC_DELAY}ms  FORCE_ALL=${FORCE_ALL}`)
   console.log('='.repeat(60) + '\n')
 
-  // 1. 并行：加载已有 slug + 拉取 GitHub 完整目录树
   const [existingSlugs, allSkills] = await Promise.all([
     loadExistingSlugs(),
     fetchSkillTree(),
   ])
 
-  // 2. 过滤出新增的
   const newSkills = allSkills.filter(({ userDir, skillDir }) => {
     const slug = `${userDir}-${skillDir}`
       .toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 80)
@@ -182,7 +174,6 @@ async function main() {
     return
   }
 
-  // 3. 逐条处理新增
   let added = 0, failed = 0
   const errors = []
   const limit = Math.min(newSkills.length, SYNC_LIMIT)
@@ -193,7 +184,7 @@ async function main() {
       .toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 80)
 
     const elapsed = Math.round((Date.now() - start) / 1000)
-    const prefix  = `[${String(i + 1).padStart(4)}/${limit}]`
+    const prefix  = `[${String(i + 1).padStart(4)}/${limit === Infinity ? newSkills.length : limit}]`
 
     try {
       const mdRes  = await fetch(mdUrl)
