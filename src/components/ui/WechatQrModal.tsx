@@ -7,14 +7,18 @@ export function WechatQrModal() {
 
   useEffect(() => {
     if (!open) return
+    // 防止背景滚动
+    document.body.style.overflow = 'hidden'
     const fn = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
     window.addEventListener('keydown', fn)
-    return () => window.removeEventListener('keydown', fn)
+    return () => {
+      document.body.style.overflow = ''
+      window.removeEventListener('keydown', fn)
+    }
   }, [open])
 
   return (
     <>
-      {/* 微信图标按钮 */}
       <button
         onClick={() => setOpen(true)}
         className="text-muted-soft transition-colors hover:text-accent"
@@ -25,20 +29,20 @@ export function WechatQrModal() {
         </svg>
       </button>
 
-      {/* 弹出二维码 */}
       {open && (
         <div
-          className="fixed inset-0 z-[200] flex items-center justify-center px-4"
-          style={{ background: 'rgba(2, 6, 14, 0.78)', backdropFilter: 'blur(10px)' }}
+          className="fixed inset-0 z-[999] flex items-center justify-center"
+          style={{ background: 'rgba(2, 6, 14, 0.82)', backdropFilter: 'blur(10px)' }}
           onClick={() => setOpen(false)}
         >
           <div
             className="tech-panel tech-outline relative overflow-hidden p-6 text-center"
+            style={{ width: '260px' }}
             onClick={e => e.stopPropagation()}
           >
             <button
               onClick={() => setOpen(false)}
-              className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg text-lg text-muted hover:bg-white/[0.06] hover:text-white"
+              className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-lg text-lg text-muted hover:bg-white/[0.06] hover:text-white transition-colors"
             >×</button>
 
             <div className="mb-4 flex items-center justify-center gap-2">
@@ -51,7 +55,7 @@ export function WechatQrModal() {
             <img
               src="/qr-wechat.png"
               alt="微信群二维码"
-              style={{ width: '180px', height: '180px', borderRadius: '12px' }}
+              style={{ width: '200px', height: '200px', borderRadius: '10px', display: 'block', margin: '0 auto' }}
             />
 
             <p className="mt-3 text-[11px] uppercase tracking-[0.2em] text-muted-soft">
