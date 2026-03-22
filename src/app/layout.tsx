@@ -8,13 +8,12 @@ const SITE_URL = 'https://askill.xyz'
 const SITE_NAME = 'ASkill'
 const SITE_TITLE = 'ASkill — OpenClaw Skills Registry'
 const SITE_DESC = 'ASkill - OpenClaw skills, rendered like a live system map. Discover, install, and share community-built OpenClaw AI skills.'
-const GA_ID = 'G-HLKNLTSPDQ'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: {
     default:  SITE_TITLE,
-    template: `%s — ASkill`,
+    template: '%s — ASkill',
   },
   description: SITE_DESC,
   keywords: ['ASkill', 'OpenClaw', 'AI skills', 'automation', 'CLI', 'community', 'skill registry', 'MCP'],
@@ -56,18 +55,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <head>
+        {/* Google Analytics 4 — G-HLKNLTSPDQ */}
         <Script
-          src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
+          src="https://www.googletagmanager.com/gtag/js?id=G-HLKNLTSPDQ"
           strategy="afterInteractive"
         />
         <Script id="ga-init" strategy="afterInteractive"
           dangerouslySetInnerHTML={{
-            __html: `
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', '${GA_ID}');
-            `,
+            __html: "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','G-HLKNLTSPDQ');",
           }}
         />
       </head>
