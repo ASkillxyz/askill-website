@@ -1,13 +1,14 @@
 import type { Metadata } from 'next'
+import Script from 'next/script'
 import '@/styles/globals.css'
 import { Providers } from '@/components/layout/Providers'
 import { Navbar } from '@/components/layout/Navbar'
-import { Analytics } from '@/components/Analytics'
 
 const SITE_URL = 'https://askill.xyz'
 const SITE_NAME = 'ASkill'
 const SITE_TITLE = 'ASkill — OpenClaw Skills Registry'
 const SITE_DESC = 'ASkill - OpenClaw skills, rendered like a live system map. Discover, install, and share community-built OpenClaw AI skills.'
+const GA_ID = 'G-HLKNLTSPDQ'
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -19,9 +20,7 @@ export const metadata: Metadata = {
   keywords: ['ASkill', 'OpenClaw', 'AI skills', 'automation', 'CLI', 'community', 'skill registry', 'MCP'],
   authors: [{ name: 'ASkill', url: SITE_URL }],
   creator: 'ASkill',
-  alternates: {
-    canonical: SITE_URL,
-  },
+  alternates: { canonical: SITE_URL },
   icons: {
     icon: [{ url: '/favicon.png', type: 'image/png', sizes: 'any' }],
     shortcut: '/favicon.png',
@@ -56,6 +55,22 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        <Script
+          src={`https://www.googletagmanager.com/gtag/js?id=${GA_ID}`}
+          strategy="afterInteractive"
+        />
+        <Script id="ga-init" strategy="afterInteractive"
+          dangerouslySetInnerHTML={{
+            __html: `
+              window.dataLayer = window.dataLayer || [];
+              function gtag(){dataLayer.push(arguments);}
+              gtag('js', new Date());
+              gtag('config', '${GA_ID}');
+            `,
+          }}
+        />
+      </head>
       <body className="tech-shell">
         <Providers>
           <Navbar />
@@ -77,7 +92,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </footer>
         </Providers>
-        <Analytics />
       </body>
     </html>
   )
