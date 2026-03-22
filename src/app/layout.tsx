@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import '@/styles/globals.css'
 import { Providers } from '@/components/layout/Providers'
 import { Navbar } from '@/components/layout/Navbar'
+import { Analytics } from '@/components/Analytics'
 
 const SITE_URL = 'https://askill.xyz'
 const SITE_NAME = 'ASkill'
@@ -18,10 +19,11 @@ export const metadata: Metadata = {
   keywords: ['ASkill', 'OpenClaw', 'AI skills', 'automation', 'CLI', 'community', 'skill registry', 'MCP'],
   authors: [{ name: 'ASkill', url: SITE_URL }],
   creator: 'ASkill',
+  alternates: {
+    canonical: SITE_URL,
+  },
   icons: {
-    icon: [
-      { url: '/favicon.png', type: 'image/png', sizes: 'any' },
-    ],
+    icon: [{ url: '/favicon.png', type: 'image/png', sizes: 'any' }],
     shortcut: '/favicon.png',
     apple:    '/favicon.png',
   },
@@ -41,6 +43,13 @@ export const metadata: Metadata = {
   robots: {
     index:  true,
     follow: true,
+    googleBot: {
+      index:               true,
+      follow:              true,
+      'max-video-preview': -1,
+      'max-image-preview': 'large',
+      'max-snippet':       -1,
+    },
   },
 }
 
@@ -68,6 +77,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </div>
           </footer>
         </Providers>
+        <Analytics />
       </body>
     </html>
   )

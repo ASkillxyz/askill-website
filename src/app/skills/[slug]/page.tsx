@@ -6,6 +6,8 @@ import { formatNumber, getTagColorClass, generateInstallCmd } from '@/lib/utils'
 import { CopyButton } from '@/components/ui/CopyButton'
 import { SkillsGrid } from '@/components/skills/SkillsGrid'
 
+const SITE_URL = 'https://askill.xyz'
+
 interface Props {
   params: { slug: string }
 }
@@ -20,11 +22,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title:       `${skill.name} — ASkill`,
       description: skill.description,
       type:        'article',
+      url:         `${SITE_URL}/skills/${skill.slug}`,
     },
     twitter: {
       card:        'summary',
       title:       `${skill.name} — ASkill`,
       description: skill.description,
+    },
+    alternates: {
+      canonical: `${SITE_URL}/skills/${skill.slug}`,
     },
   }
 }
@@ -62,8 +68,39 @@ export default async function SkillDetailPage({ params }: Props) {
   const bg   = CARD_BG_MAP[skill.slug] ?? '#1e2a3a'
   const icon = CARD_ICON_MAP[skill.slug] ?? '⚡'
 
+  // JSON-LD 结构化数据
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: skill.name,
+    description: skill.description,
+    url: `${SITE_URL}/skills/${skill.slug}`,
+    applicationCategory: 'DeveloperApplication',
+    operatingSystem: 'CLI',
+    author: {
+      '@type': 'Person',
+      name: skill.author.username,
+      url: `https://github.com/${skill.author.username}`,
+    },
+    datePublished: skill.createdAt,
+    dateModified:  skill.updatedAt,
+    aggregateRating: skill.stars > 0 ? {
+      '@type': 'AggregateRating',
+      ratingValue: '5',
+      ratingCount: String(skill.stars),
+    } : undefined,
+    downloadUrl: skill.githubRepo || undefined,
+    keywords: skill.categories.join(', '),
+  }
+
   return (
     <div className="page-wrap py-8 sm:py-10">
+      {/* JSON-LD 结构化数据 */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+
       <Link
         href="/skills"
         className="mb-6 inline-flex items-center gap-2 text-sm text-muted transition-colors hover:text-white"
@@ -193,7 +230,7 @@ function SkillMarkdown({ content }: { content: string }) {
     else if (line.startsWith('### ')) elements.push(<h3 key={key++} className="mb-2 mt-6 text-lg">{line.slice(4)}</h3>)
     else if (line.startsWith('- '))   elements.push(<li key={key++} className="ml-5 list-disc text-sm leading-7">{line.slice(2)}</li>)
     else if (line.trim())             elements.push(<p  key={key++} className="mb-3 text-sm leading-7">{line}</p>)
-  }
+  </for>
 
   return <div className="prose-ocs">{elements}</div>
 }
